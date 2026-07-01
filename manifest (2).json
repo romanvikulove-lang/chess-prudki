@@ -1,0 +1,13 @@
+{
+  "background_color": "#ffffff",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "Chess Prudki",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "ChessPrudki",
+  "start_url": "/",
+  "theme_color": "#ffffff",
+  "id": "chess-prudki",
+  "description": "Семейные шахматы с помощницей Таней. Играйте в свободное время для удовольствия."
+}
