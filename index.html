@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chess Prudki — Семейный шахматный клуб</title>
+    <link rel="manifest" href="manifest.json"> <!-- ДОБАВЛЕНО -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        /* ---------- Базовые стили ---------- */
+        * { user-select: none; touch-action: manipulation; }
+        :root { --light-square: #d4b28c; --dark-square: #8b6b4a; --highlight: rgba(255, 215, 0, 0.5); }
+        body { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; padding: 20px; font-family: 'Segoe UI', 'Comic Sans MS', cursive; }
+        #app { background: rgba(0,0,0,0.3); backdrop-filter: blur(4px); border-radius: 30px; padding: 25px; box-shadow: 0 20px 40px rgba(0,0,0,0.6), 0 0 80px rgba(100,100,255,0.1); border: 1px solid rgba(255,255,255,0.1); }
+        #global-sound-btn { position: fixed; top: 20px; right: 20px; z-index: 9999; width: 56px; height: 56px; border-radius: 50%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); border: 2px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; color: white; font-size: 1.8rem; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        #global-sound-btn:hover { transform: scale(1.1); background: rgba(0,0,0,0.9); }
+        #global-sound-btn i { pointer-events: none; }
+        .notification-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 2000; }
+        .notification-text { font-size: 3.5rem; font-weight: 900; padding: 15px 40px; border-radius: 30px; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); animation: notifPop 0.6s cubic-bezier(0.2, 0.9, 0.4, 1.1); text-shadow: 0 0 30px currentColor; pointer-events: none; }
+        .notification-check { color: #ff4444; border: 3px solid #ff4444; box-shadow: 0 0 30px rgba(255,68,68,0.5); }
+        .notification-mate { color: #ffd700; border: 3px solid #ffd700; box-shadow: 0 0 30px rgba(255,215,0,0.5); }
+        @keyframes notifPop { 0% { transform: scale(0.3); opacity: 0; } 50% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
+        .board-wrapper { position: relative; width: 100%; max-width: 500px; margin: 0 auto; }
+        #board-container { background: #5a3d2e; border-radius: 16px; padding: 20px 20px 30px 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.3), 0 0 0 2px #7a5d3f; width: 100%; aspect-ratio: 1 / 1; border: 4px solid #3d2a1a; position: relative; }
+        #board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: 100%; height: 100%; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 15px rgba(0,0,0,0.3); }
+        .square { display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; font-size: 2.4rem; font-weight: bold; transition: 0.05s linear; }
+        .square.light-square { background: repeating-linear-gradient(45deg,#d4b28c 0px,#c9a77c 2px,#d4b28c 4px,#bf9b6f 6px,#d4b28c 8px),linear-gradient(135deg,#d4b28c,#c9a77c); background-blend-mode: overlay; }
+        .square.dark-square { background: repeating-linear-gradient(45deg,#8b6b4a 0px,#7a5d3f 2px,#8b6b4a 4px,#6a4e33 6px,#8b6b4a 8px),linear-gradient(135deg,#8b6b4a,#7a5d3f); background-blend-mode: overlay; }
+        .selected { background-color: var(--highlight) !important; box-shadow: inset 0 0 20px gold; }
+        .last-move { box-shadow: inset 0 0 0 3px gold; }
+        .check-warning { box-shadow: inset 0 0 0 4px red !important; animation: pulseRed 0.5s infinite; }
+        @keyframes pulseRed { 0% { box-shadow: inset 0 0 0 4px rgba(255,0,0,0.7); } 100% { box-shadow: inset 0 0 0 10px rgba(255,0,0,0); } }
+        .possible-move::after { content: ''; width: 24%; height: 24%; background: rgba(0,0,0,0.2); border-radius: 50%; position: absolute; }
+        .possible-capture::after { content: ''; width: 80%; height: 80%; border: 4px solid #dc2626; border-radius: 50%; position: absolute; box-sizing: border-box; }
+        .hint-square { box-shadow: inset 0 0 0 4px #10b981; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { box-shadow: inset 0 0 0 4px #10b981; } 100% { box-shadow: inset 0 0 0 8px rgba(16,185,129,0.3); } }
+        .piece { display: block; font-size: 2.8rem; font-weight: bold; transition: transform 0.1s ease; pointer-events: none; line-height: 1; }
+        .piece-white { color: #ffffff; text-shadow: 0 0 5px #000, 2px 2px 0 #555, 4px 4px 0 #333, 6px 6px 0 #1a1a1a, 0 0 15px rgba(255,255,255,0.3); }
+        .piece-black { color: #1a1a1a; text-shadow: 0 0 5px #fff, 2px 2px 0 #aaa, 4px 4px 0 #888, 6px 6px 0 #555, 0 0 15px rgba(0,0,0,0.3); }
+        .square:active .piece { transform: scale(0.85); }
+        .animated-piece { position: fixed; z-index: 1000; transition: all 0.6s cubic-bezier(0.2, 0.9, 0.4, 1.1); pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 2.8rem; font-weight: bold; line-height: 1; }
+        .coord-label { position: absolute; font-size: 0.65rem; font-weight: 300; color: rgba(212, 178, 140, 0.6); text-shadow: 0 0 4px rgba(0,0,0,0.9); pointer-events: none; font-family: 'Courier New', monospace; letter-spacing: 0.3px; }
+        .coord-rank { left: 4px; transform: translateY(-50%); text-align: right; width: 14px; }
+        .coord-file { bottom: -4px; transform: translateX(-50%); text-align: center; width: 14px; }
+        @media (max-width: 600px) { .coord-label { font-size: 0.5rem; } #board-container { padding: 14px 14px 22px 22px; } .coord-rank { left: 2px; width: 10px; } .coord-file { bottom: -2px; width: 10px; } }
+        .game-container { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 20px; width: 100%; max-width: 900px; margin: 0 auto; }
+        .side-panel { flex: 0 0 160px; display: flex; flex-direction: column; align-items: center; text-align: center; background: rgba(0,0,0,0.3); border-radius: 20px; padding: 15px 10px; backdrop-filter: blur(4px); }
+        .big-avatar { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 4px solid gold; background: #4c1d95; margin-bottom: 8px; }
+        .big-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .big-name { font-size: 1.3rem; font-weight: bold; color: #ffd966; text-shadow: 2px 2px 2px black; }
+        .change-btn { margin-top: 8px; background: #facc15; color: #1e1b4b; padding: 6px 14px; border-radius: 40px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; font-size: 0.9rem; }
+        .change-btn:hover { transform: scale(1.05); background: #ffd700; }
+        .board-area { flex: 1; min-width: 300px; max-width: 500px; text-align: center; }
+        .action-buttons { display: flex; justify-content: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+        .action-btn { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); padding: 6px 16px; border-radius: 40px; font-weight: bold; cursor: pointer; transition: 0.2s; border: 1px solid rgba(255,255,255,0.3); font-size: 0.9rem; color: white; }
+        .action-btn:hover { transform: scale(1.05); background: rgba(0,0,0,0.7); }
+        #turn-indicator { text-align: center; font-size: 1rem; font-weight: bold; background: #b45309; padding: 4px 12px; border-radius: 40px; margin-top: 8px; display: inline-block; color: white; }
+        #status-msg { text-align: center; color: white; background: rgba(0,0,0,0.5); padding: 6px 12px; border-radius: 12px; font-size: 0.9rem; margin-top: 6px; }
+        @media (max-width: 800px) { .side-panel { flex: 0 0 100px; padding: 10px; } .big-avatar { width: 90px; height: 90px; } .big-name { font-size: 1rem; } .board-area { min-width: 260px; } .piece { font-size: 2.2rem; } .animated-piece { font-size: 2.2rem; } }
+        @media (max-width: 600px) { .side-panel { flex: 0 0 70px; padding: 6px; } .big-avatar { width: 70px; height: 70px; } .game-container { gap: 10px; } .square { font-size: 1.6rem; } .piece { font-size: 2rem; } .animated-piece { font-size: 2rem; } .notification-text { font-size: 2.2rem; padding: 10px 20px; } #app { padding: 10px; } }
+        .modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:1000; backdrop-filter:blur(5px); }
+        .modal-content { background: white; border-radius: 30px; padding: 20px; text-align: center; max-width: 90%; width: 400px; color: black; max-height: 80vh; overflow-y: auto; }
+        .modal-content button { margin: 5px; padding: 8px 16px; border-radius: 30px; background: #facc15; font-weight: bold; cursor: pointer; border: none; }
+        #tanya { position: fixed; bottom: 20px; left: 20px; z-index: 100; cursor: pointer; transition: transform 0.3s ease, opacity 0.3s ease; }
+        #tanya-avatar { width: 100px; height: 100px; border-radius: 50%; box-shadow: 0 10px 20px rgba(0,0,0,0.5); border: 4px solid white; overflow: hidden; background: #facc15; display: flex; align-items: center; justify-content: center; transition: transform 0.3s ease; }
+        #tanya-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        #tanya:hover #tanya-avatar { transform: scale(1.05); }
+        .tanya-speak { animation: tanyaWobble 0.5s ease-in-out 3; }
+        @keyframes tanyaWobble { 0%,100%{ transform: rotate(0deg); } 25%{ transform: rotate(5deg); } 75%{ transform: rotate(-5deg); } }
+        .floating-heart { position: absolute; font-size: 1.5rem; pointer-events: none; animation: floatUpHeart 1.2s ease-out forwards; z-index: 101; }
+        @keyframes floatUpHeart { 0% { opacity: 1; transform: translateY(0) scale(0.5); } 100% { opacity: 0; transform: translateY(-80px) scale(1.2); } }
+        #tanya-speech { position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background: white; color: #1a1a2e; padding: 10px 18px; border-radius: 30px; font-size: 1.1rem; font-weight: 500; white-space: normal; width: 200px; box-shadow: 0 8px 20px rgba(0,0,0,0.3); display: none; z-index: 102; text-align: center; line-height: 1.4; transition: opacity 0.3s ease, transform 0.3s ease; }
+        #tanya-speech.show { display: block; animation: fadeInUp 0.5s ease; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(15px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        @media (max-width:600px){ #tanya-avatar { width: 80px; height: 80px; } #tanya-speech { font-size: 0.95rem; width: 150px; padding: 8px 12px; } }
+        .character-card { background: rgba(255,255,255,0.15); border-radius: 32px; padding: 15px 10px; transition: 0.2s; cursor: pointer; backdrop-filter: blur(8px); text-align: center; }
+        .character-card:hover { transform: scale(1.05); background: rgba(255,255,255,0.25); }
+        .character-img { width: 120px; height: 120px; border-radius: 50%; margin: 0 auto 10px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.4); background: #4c1d95; }
+        .character-img img { width: 100%; height: 100%; object-fit: cover; }
+        .difficulty-radio { display: inline-flex; gap: 10px; margin: 15px 0; flex-wrap: wrap; justify-content: center; }
+        .difficulty-radio button { padding: 8px 20px; border-radius: 40px; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; font-weight: bold; cursor: pointer; transition: 0.2s; backdrop-filter: blur(4px); }
+        .difficulty-radio button:hover { transform: scale(1.05); background: rgba(255,255,255,0.2); }
+        .difficulty-radio button.selected-easy { background: #10b981; border-color: #10b981; }
+        .difficulty-radio button.selected-medium { background: #f59e0b; border-color: #f59e0b; }
+        .difficulty-radio button.selected-hard { background: #ef4444; border-color: #ef4444; }
+        .hidden-screen { display: none !important; }
+        .fixed-screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; padding: 20px; overflow-y: auto; }
+        .bg-hero { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); }
+        .bg-opponent { background: linear-gradient(135deg, #312e81 0%, #4c1d95 100%); }
+        #splash-screen { position: fixed; inset: 0; background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; padding: 20px; text-align: center; }
+        #splash-screen h1 { font-size: 4rem; font-weight: 900; background: linear-gradient(135deg, #f7971e, #ffd200); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 0 30px rgba(255, 215, 0, 0.3); margin-bottom: 0; }
+        #splash-screen .subtitle { font-size: 1.4rem; color: #ccc; letter-spacing: 3px; margin-top: 5px; margin-bottom: 40px; font-style: italic; }
+        #splash-screen .start-btn { padding: 16px 48px; font-size: 1.5rem; font-weight: bold; border: none; border-radius: 60px; background: linear-gradient(135deg, #f7971e, #ffd200); color: #1a1a2e; cursor: pointer; transition: 0.3s; box-shadow: 0 8px 25px rgba(255, 215, 0, 0.4); }
+        #splash-screen .start-btn:hover { transform: scale(1.05); box-shadow: 0 12px 35px rgba(255, 215, 0, 0.6); }
+    </style>
+</head>
+<body>
+    <!-- КНОПКА ЗВУКА -->
+    <div id="global-sound-btn"><i id="sound-icon" class="fas fa-volume-mute"></i></div>
+
+    <!-- ЗАСТАВКА -->
+    <div id="splash-screen">
+        <h1>♚ Chess Prudki ♔</h1>
+        <div class="subtitle">Семейный шахматный клуб</div>
+        <button class="start-btn" id="splash-start">Начать игру</button>
+    </div>
+
+    <!-- ЭКРАН ВЫБОРА ГЕРОЯ -->
+    <div id="hero-screen" class="fixed-screen bg-hero hidden-screen">
+        <h1 class="text-3xl font-black text-yellow-300 mb-6 drop-shadow-lg">Кто будет играть?</h1>
+        <div id="hero-grid" class="grid grid-cols-2 md:grid-cols-4 gap-5 w-full max-w-3xl"></div>
+    </div>
+
+    <!-- ЭКРАН ВЫБОРА СОПЕРНИКА + СЛОЖНОСТЬ -->
+    <div id="opponent-screen" class="fixed-screen bg-opponent hidden-screen">
+        <h1 class="text-3xl font-black text-pink-200 mb-6 drop-shadow-lg">Выбери соперника</h1>
+        <div id="opponent-grid" class="grid grid-cols-2 md:grid-cols-4 gap-5 w-full max-w-3xl"></div>
+        <div class="difficulty-radio" id="difficulty-radio">
+            <button data-level="easy" class="selected-easy">🌱 Легко</button>
+            <button data-level="medium" class="selected-medium">⚡ Средне</button>
+            <button data-level="hard">🔥 Тяжело</button>
+        </div>
+        <div style="margin-top:5px; font-size:0.8rem; color:#ccc;">Выбери сложность</div>
+    </div>
+
+    <!-- ИГРОВОЙ ЭКРАН -->
+    <div id="game-screen" class="hidden-screen" style="width:100%; max-width:900px; margin:0 auto; padding:10px;">
+        <div class="game-container">
+            <div class="side-panel">
+                <div class="big-avatar" id="hero-big-avatar"></div>
+                <div class="big-name" id="hero-big-name">Герой</div>
+                <button class="change-btn" id="change-hero-btn">Сменить героя</button>
+            </div>
+            <div class="board-area">
+                <div class="board-wrapper">
+                    <div id="board-container">
+                        <div id="board"></div>
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <div id="reset-btn" class="action-btn"><i class="fas fa-undo-alt"></i> Новая игра</div>
+                    <div id="hint-btn" class="action-btn"><i class="fas fa-lightbulb"></i> Подсказка</div>
+                    <div id="undo-btn" class="action-btn"><i class="fas fa-rotate-left"></i> Отменить</div>
+                    <div id="menu-btn" class="action-btn"><i class="fas fa-bars"></i> Меню</div>
+                </div>
+                <div id="turn-indicator">Ваш ход</div>
+                <div id="status-msg">Сделайте ход</div>
+            </div>
+            <div class="side-panel">
+                <div class="big-avatar" id="opponent-big-avatar"></div>
+                <div class="big-name" id="opponent-big-name">Соперник</div>
+                <button class="change-btn" id="change-opponent-btn">Сменить соперника</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таня -->
+    <div id="tanya">
+        <div id="tanya-avatar"><img src="images/tanya_helper.png" id="tanya-img" onerror="this.style.display='none'; this.nextSibling.style.display='block';"><span style="display:none; font-size:2.5rem;">🧚‍♀️</span></div>
+        <div id="tanya-speech" class="hidden">Привет!</div>
+    </div>
+
+    <script>
+        // ============================================================
+        // 1. МУЗЫКА БЕТХОВЕНА (loop, из папки sounds)
+        // ============================================================
+        let musicEnabled = localStorage.getItem('musicEnabled') === 'true';
+        let bgMusic = null;
+
+        function initMusic() {
+            if (bgMusic) return;
+            bgMusic = new Audio('sounds/betkhoven-k-jelize.mp3');
+            bgMusic.loop = true;
+            bgMusic.volume = 0.25;
+        }
+
+        function startMusic() {
+            if (!musicEnabled) return;
+            if (!bgMusic) initMusic();
+            bgMusic.play().catch(e => console.log('Ошибка воспроизведения', e));
+            document.getElementById('sound-icon').className = 'fas fa-volume-high';
+        }
+
+        function stopMusic() {
+            if (bgMusic) bgMusic.pause();
+            document.getElementById('sound-icon').className = 'fas fa-volume-mute';
+        }
+
+        function toggleMusic() {
+            musicEnabled = !musicEnabled;
+            localStorage.setItem('musicEnabled', musicEnabled);
+            if (musicEnabled) {
+                if (bgMusic && bgMusic.paused) bgMusic.play().catch(() => startMusic());
+                else startMusic();
+                document.getElementById('sound-icon').className = 'fas fa-volume-high';
+            } else {
+                stopMusic();
+                document.getElementById('sound-icon').className = 'fas fa-volume-mute';
+            }
+        }
+
+        document.getElementById('global-sound-btn').onclick = toggleMusic;
+        let musicStarted = false;
+        function startMusicOnClick() {
+            if (musicStarted) return;
+            if (musicEnabled) {
+                initMusic();
+                startMusic();
+                musicStarted = true;
+            }
+            document.body.removeEventListener('click', startMusicOnClick);
+        }
+        document.body.addEventListener('click', startMusicOnClick);
+        if (musicEnabled) {
+            setTimeout(() => { initMusic(); startMusic(); }, 200);
+            document.getElementById('sound-icon').className = 'fas fa-volume-high';
+        }
+
+        // ============================================================
+        // 2. ЗАСТАВКА
+        // ============================================================
+        document.getElementById('splash-start').addEventListener('click', function() {
+            document.getElementById('splash-screen').style.display = 'none';
+            document.getElementById('hero-screen').classList.remove('hidden-screen');
+            setTimeout(() => {
+                showTanyaMessage('Привет! Выбери своего игрока!');
+            }, 300);
+        });
+
+        // ============================================================
+        // 3. ШАХМАТЫ (с "умной" Таней, медленными комментариями)
+        // ============================================================
+        let game = new Chess();
+        let selectedSquare = null, currentMoves = [], gameOver = false, lastMoveFrom = null, lastMoveTo = null, hintSquares = [];
+        let currentHero = null, currentOpponent = null, currentDifficulty = null;
+        let moveHistory = [];
+        let moveHistoryFEN = [];
+        let profile = { wins:0, losses:0, draws:0, points:0 };
+        function loadProfile() { try { let p = localStorage.getItem('chessProfile'); if(p) profile = JSON.parse(p); } catch(e){} }
+        function saveProfile() { localStorage.setItem('chessProfile', JSON.stringify(profile)); }
+        function showProfile() { alert("Побед: "+profile.wins+"\nПоражений: "+profile.losses+"\nНичьих: "+profile.draws+"\nОчки: "+profile.points); }
+
+        function showNotification(text, type) {
+            const overlay = document.createElement('div');
+            overlay.className = 'notification-overlay';
+            const div = document.createElement('div');
+            div.className = `notification-text ${type === 'check' ? 'notification-check' : 'notification-mate'}`;
+            div.textContent = text;
+            overlay.appendChild(div);
+            document.body.appendChild(overlay);
+            setTimeout(() => {
+                overlay.style.transition = 'opacity 0.3s';
+                overlay.style.opacity = '0';
+                setTimeout(() => overlay.remove(), 300);
+            }, 1500);
+        }
+
+        function getPieceSymbol(piece) {
+            if (!piece) return '';
+            const symbols = {
+                'k': '♔', 'q': '♕', 'r': '♖', 'b': '♗', 'n': '♘', 'p': '♙',
+                'K': '♚', 'Q': '♛', 'R': '♜', 'B': '♝', 'N': '♞', 'P': '♟'
+            };
+            return symbols[piece.type + (piece.color === 'w' ? '' : '')] || symbols[piece.type] || '';
+        }
+
+        const pieceNames = {
+            'k': 'король',
+            'q': 'ферзь',
+            'r': 'ладья',
+            'b': 'слон',
+            'n': 'конь',
+            'p': 'пешка'
+        };
+
+        function addCoordinates() {
+            const container = document.getElementById('board-container');
+            container.querySelectorAll('.coord-label').forEach(el => el.remove());
+            const ranks = '87654321';
+            const files = 'abcdefgh';
+            const rect = container.getBoundingClientRect();
+            const size = rect.width;
+            const cellSize = size / 8;
+            for (let i = 0; i < 8; i++) {
+                const label = document.createElement('div');
+                label.className = 'coord-label coord-rank';
+                label.textContent = ranks[i];
+                label.style.top = (i * cellSize + cellSize/2) + 'px';
+                container.appendChild(label);
+            }
+            for (let j = 0; j < 8; j++) {
+                const label = document.createElement('div');
+                label.className = 'coord-label coord-file';
+                label.textContent = files[j];
+                label.style.left = (j * cellSize + cellSize/2) + 'px';
+                container.appendChild(label);
+            }
+        }
+
+        function renderBoard() {
+            const boardState = game.board();
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+            const inCheck = game.in_check();
+            for (let i=0; i<8; i++) {
+                for (let j=0; j<8; j++) {
+                    const piece = boardState[i][j];
+                    const square = String.fromCharCode(97 + j) + (8 - i);
+                    const isLight = (i + j) % 2 === 0;
+                    const squareDiv = document.createElement('div');
+                    squareDiv.className = `square ${isLight ? 'light-square' : 'dark-square'}`;
+                    if (selectedSquare === square) squareDiv.classList.add('selected');
+                    if (lastMoveFrom === square || lastMoveTo === square) squareDiv.classList.add('last-move');
+                    if (inCheck && piece && piece.type === (game.turn() === 'w' ? 'k' : 'K')) {
+                        squareDiv.classList.add('check-warning');
+                    }
+                    if (hintSquares.includes(square)) squareDiv.classList.add('hint-square');
+                    if (currentMoves.some(m => m.from === selectedSquare && m.to === square)) {
+                        const targetPiece = game.get(square);
+                        const isCapture = targetPiece && targetPiece.color !== (game.turn() === 'w' ? 'w' : 'b');
+                        squareDiv.classList.add(isCapture ? 'possible-capture' : 'possible-move');
+                    }
+                    if (piece) {
+                        const span = document.createElement('span');
+                        span.className = `piece piece-${piece.color === 'w' ? 'white' : 'black'}`;
+                        span.textContent = getPieceSymbol(piece);
+                        squareDiv.appendChild(span);
+                    }
+                    squareDiv.dataset.square = square;
+                    squareDiv.addEventListener('click', (function(sq) { return function() { onSquareClick(sq); }; })(square));
+                    boardEl.appendChild(squareDiv);
+                }
+            }
+            if (inCheck && !game.game_over()) {
+                document.getElementById('status-msg').innerText = 'Шах! ' + document.getElementById('status-msg').innerText.replace('Шах! ', '');
+            }
+            addCoordinates();
+        }
+
+        function animateMove(from, to, symbol, className, callback) {
+            const fromSquare = document.querySelector(`[data-square="${from}"]`);
+            const toSquare = document.querySelector(`[data-square="${to}"]`);
+            if (!fromSquare || !toSquare) { callback(); return; }
+            const fromRect = fromSquare.getBoundingClientRect();
+            const toRect = toSquare.getBoundingClientRect();
+            const animatedPiece = document.createElement('div');
+            animatedPiece.className = `animated-piece ${className}`;
+            animatedPiece.textContent = symbol;
+            animatedPiece.style.left = fromRect.left + 'px';
+            animatedPiece.style.top = fromRect.top + 'px';
+            animatedPiece.style.width = fromRect.width + 'px';
+            animatedPiece.style.height = fromRect.height + 'px';
+            document.body.appendChild(animatedPiece);
+            const originalSpan = fromSquare.querySelector('.piece');
+            if (originalSpan) originalSpan.style.opacity = '0';
+            requestAnimationFrame(() => {
+                animatedPiece.style.left = toRect.left + 'px';
+                animatedPiece.style.top = toRect.top + 'px';
+                animatedPiece.style.width = toRect.width + 'px';
+                animatedPiece.style.height = toRect.height + 'px';
+            });
+            setTimeout(() => {
+                animatedPiece.remove();
+                if (originalSpan) originalSpan.style.opacity = '1';
+                callback();
+            }, 600);
+        }
+
+        function analyzePosition(piece, from, to) {
+            const tempGame = new Chess(game.fen());
+            const testMove = tempGame.move({ from, to, promotion: 'q' });
+            if (testMove) {
+                if (tempGame.in_checkmate()) {
+                    return 'Отличный ход! Ты ставишь мат!';
+                } else if (tempGame.in_check()) {
+                    return 'Ты ставишь шах! Отлично!';
+                }
+                const opponentMoves = tempGame.moves({ verbose: true });
+                const threats = opponentMoves.filter(m => m.to === to && m.color === 'b');
+                if (threats.length > 0) {
+                    return 'Осторожно! Твою фигуру могут съесть на следующем ходу.';
+                }
+                const ourCaptures = tempGame.moves({ verbose: true }).filter(m => m.flags.includes('c') && m.color === 'w');
+                if (ourCaptures.length > 0) {
+                    const captureSquares = ourCaptures.map(m => m.to.toUpperCase()).join(', ');
+                    return `У тебя есть взятие! Можно съесть на ${captureSquares}.`;
+                }
+                return null;
+            }
+            return null;
+        }
+
+        async function onSquareClick(square) {
+            if (gameOver) return;
+            if (game.turn() !== 'w') return;
+            if (selectedSquare) {
+                const move = currentMoves.find(m => m.from === selectedSquare && m.to === square);
+                if (move) {
+                    await attemptMove(selectedSquare, square);
+                    selectedSquare = null;
+                    currentMoves = [];
+                    renderBoard();
+                    return;
+                } else {
+                    selectedSquare = null;
+                    currentMoves = [];
+                    renderBoard();
+                }
+            }
+            const piece = game.get(square);
+            if (piece && piece.color === 'w') {
+                const moves = game.moves({ square: square, verbose: true });
+                if (moves.length) {
+                    selectedSquare = square;
+                    currentMoves = moves.map(m => ({ from: m.from, to: m.to }));
+                    renderBoard();
+                    const pieceName = pieceNames[piece.type] || 'фигура';
+                    let advice = null;
+                    const captures = moves.filter(m => m.flags.includes('c'));
+                    if (captures.length > 0) {
+                        const captureSquares = captures.map(m => m.to.toUpperCase()).join(', ');
+                        advice = `Можно съесть фигуру на ${captureSquares}!`;
+                    }
+                    const checkMoves = moves.filter(m => {
+                        const copy = new Chess(game.fen());
+                        const result = copy.move({ from: m.from, to: m.to, promotion: 'q' });
+                        return result && copy.in_check();
+                    });
+                    if (checkMoves.length > 0) {
+                        if (advice) {
+                            advice += ' Или поставить шах!';
+                        } else {
+                            advice = `Ходом ${pieceName} можно поставить шах!`;
+                        }
+                    }
+                    const badMoves = moves.filter(m => {
+                        const copy = new Chess(game.fen());
+                        const result = copy.move({ from: m.from, to: m.to, promotion: 'q' });
+                        if (result) {
+                            const opponentMoves = copy.moves({ verbose: true });
+                            return opponentMoves.some(om => om.to === m.to && om.color === 'b');
+                        }
+                        return false;
+                    });
+                    if (badMoves.length > 0 && !advice) {
+                        advice = `Не ходи ${pieceName} на ${badMoves[0].to.toUpperCase()} — его могут съесть!`;
+                    }
+                    if (advice) {
+                        showTanyaMessage(advice);
+                    }
+                } else {
+                    selectedSquare = null;
+                    renderBoard();
+                }
+            } else {
+                selectedSquare = null;
+                renderBoard();
+            }
+        }
+
+        async function attemptMove(from, to, isAI = false) {
+            if (gameOver) return false;
+            const move = game.move({ from, to, promotion: 'q' });
+            if (move) {
+                moveHistory.push({ from, to, piece: move.piece, captured: move.captured || null });
+                moveHistoryFEN.push(game.fen());
+                if (move.captured) playCaptureSound(); else playMoveSound();
+                const fromSquareElem = document.querySelector(`[data-square="${from}"]`);
+                const spanElem = fromSquareElem?.querySelector('.piece');
+                if (spanElem) {
+                    const symbol = spanElem.textContent;
+                    const className = spanElem.className.split(' ')[1];
+                    await new Promise(resolve => animateMove(from, to, symbol, className, resolve));
+                }
+                lastMoveFrom = move.from;
+                lastMoveTo = move.to;
+                if (!isAI) {
+                    const pieceName = pieceNames[move.piece] || 'фигура';
+                    const toSquare = move.to.toUpperCase();
+                    let comment = `Ход: ${pieceName} на ${toSquare}!`;
+                    if (move.captured) {
+                        comment = `Взятие! ${pieceName} съел фигуру на ${toSquare}!`;
+                    }
+                    setTimeout(() => {
+                        showTanyaMessage(comment);
+                    }, 700);
+                    setTimeout(() => {
+                        if (!game.game_over()) {
+                            const praises = ['Отличный ход!', 'Хорошо!', 'Так держать!', 'Красивый ход!', 'Умно!'];
+                            const praise = praises[Math.floor(Math.random() * praises.length)];
+                            showTanyaMessage(praise);
+                        }
+                    }, 2500);
+                }
+                renderBoard();
+                if (game.in_checkmate()) {
+                    showNotification('Мат!', 'mate');
+                    speakMessage('Мат! Поздравляю!');
+                    showTanyaMessage('Поздравляю! Ты выиграл!');
+                } else if (game.in_check()) {
+                    showNotification('Шах!', 'check');
+                    speakMessage('Шах!');
+                    showTanyaMessage('Шах! Защищай короля!');
+                }
+                if (game.game_over()) {
+                    if (game.in_checkmate()) {
+                        if (game.turn() === 'w') {
+                            document.getElementById('status-msg').innerText = 'Чёрные победили!';
+                            profile.losses++;
+                            showTanyaMessage('Ой, ты проиграл... Не сдавайся!');
+                        } else {
+                            document.getElementById('status-msg').innerText = 'Ты победил!';
+                            profile.wins++;
+                            profile.points += 50;
+                            saveProfile();
+                            showTanyaMessage('Ура! Ты победил! +50 очков!');
+                        }
+                    } else {
+                        document.getElementById('status-msg').innerText = 'Ничья!';
+                        profile.draws++;
+                        saveProfile();
+                        showTanyaMessage('Ничья! Хорошая игра!');
+                    }
+                    gameOver = true;
+                    updateTurnUI();
+                    saveProfile();
+                    return true;
+                }
+                clearHint();
+                updateTurnUI();
+                return true;
+            } else {
+                if (!isAI) document.getElementById('status-msg').innerText = 'Неверный ход!';
+                return false;
+            }
+        }
+
+        function updateTurnUI() {
+            const turn = game.turn();
+            document.getElementById('turn-indicator').innerHTML = turn === 'w' ? 'Твой ход!' : 'ИИ думает...';
+            if (turn !== 'w' && !game.game_over() && !gameOver && currentDifficulty && currentDifficulty.level !== 'tutorial') {
+                setTimeout(() => aiMove(), 200);
+            }
+        }
+
+        async function aiMove() {
+            if (gameOver || game.turn() !== 'b' || !currentDifficulty || currentDifficulty.level === 'tutorial') return;
+            const moves = game.moves({ verbose: true });
+            if (!moves.length) return;
+            let chosen;
+            if (currentDifficulty.level === 'easy') chosen = moves[Math.floor(Math.random()*moves.length)];
+            else if (currentDifficulty.level === 'medium') {
+                const captures = moves.filter(m => m.flags.includes('c'));
+                if (captures.length) chosen = captures[Math.floor(Math.random()*captures.length)];
+                else chosen = moves[Math.floor(Math.random()*moves.length)];
+            } else {
+                const checks = moves.filter(m => {
+                    const copy = new Chess(game.fen());
+                    const result = copy.move({ from: m.from, to: m.to, promotion: 'q' });
+                    return result && copy.in_check();
+                });
+                if (checks.length) chosen = checks[0];
+                else if (moves.some(m => m.flags.includes('c'))) chosen = moves.find(m => m.flags.includes('c'));
+                else chosen = moves[Math.floor(Math.random()*moves.length)];
+            }
+            if (chosen) {
+                showTanyaMessage('Соперник думает...');
+                await attemptMove(chosen.from, chosen.to, true);
+                await new Promise(resolve => setTimeout(resolve, 200));
+                if (!gameOver && !game.game_over()) {
+                    checkForCaptureThreat();
+                    setTimeout(() => {
+                        if (!game.game_over()) {
+                            showTanyaMessage('Твой ход! Думай!');
+                        }
+                    }, 500);
+                }
+            }
+        }
+
+        function checkForCaptureThreat() {
+            const moves = game.moves({ verbose: true });
+            const opponentColor = game.turn() === 'w' ? 'b' : 'w';
+            const threats = moves.filter(m => m.flags.includes('c') && m.color === opponentColor);
+            if (threats.length > 0) {
+                const ourPieces = threats.filter(m => {
+                    const piece = game.get(m.to);
+                    return piece && piece.color === 'w';
+                });
+                if (ourPieces.length > 0) {
+                    setTimeout(() => {
+                        showTanyaMessage('Осторожно! Твою фигуру могут съесть!');
+                    }, 300);
+                }
+            }
+        }
+
+        function undoMove() {
+            if (moveHistoryFEN.length === 0) {
+                showTanyaMessage('Нет ходов для отмены!');
+                return;
+            }
+            const fen = moveHistoryFEN.pop();
+            game.load(fen);
+            moveHistory.pop();
+            selectedSquare = null;
+            currentMoves = [];
+            gameOver = false;
+            lastMoveFrom = null;
+            lastMoveTo = null;
+            clearHint();
+            renderBoard();
+            updateTurnUI();
+            document.getElementById('status-msg').innerText = 'Ход отменён!';
+            showTanyaMessage('Ход отменён! Продолжай!');
+        }
+
+        function resetGame() {
+            game = new Chess();
+            selectedSquare = null;
+            currentMoves = [];
+            gameOver = false;
+            lastMoveFrom = null;
+            lastMoveTo = null;
+            moveHistory = [];
+            moveHistoryFEN = [];
+            clearHint();
+            renderBoard();
+            updateTurnUI();
+            document.getElementById('status-msg').innerText = 'Новая партия! Твой ход.';
+            showTanyaMessage('Новая игра! Удачи!');
+        }
+
+        function clearHint() { hintSquares = []; renderBoard(); }
+        function giveHint() {
+            if (gameOver || game.turn() !== 'w') { document.getElementById('status-msg').innerText = 'Сейчас не время для подсказки'; return; }
+            const moves = game.moves({ verbose: true });
+            if (!moves.length) return;
+            const randomMove = moves[Math.floor(Math.random()*moves.length)];
+            hintSquares = [randomMove.from, randomMove.to];
+            renderBoard();
+            const pieceName = pieceNames[randomMove.piece] || 'фигура';
+            const toSquare = randomMove.to.toUpperCase();
+            document.getElementById('status-msg').innerText = `Подсказка: ${pieceName} → ${toSquare}`;
+            showTanyaMessage(`Попробуй ходить ${pieceName} на ${toSquare}!`);
+            setTimeout(() => { if (hintSquares.length) { hintSquares = []; renderBoard(); } }, 3000);
+        }
+
+        function speakMessage(text) {
+            if (!window.speechSynthesis) return;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ru-RU';
+            utterance.rate = 0.9;
+            utterance.pitch = 1.1;
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utterance);
+        }
+
+        let audioCtx = null;
+        function playCaptureSound() {
+            if (!musicEnabled) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = 300; gain.gain.value = 0.15;
+            osc.start(); gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.25);
+            osc.stop(audioCtx.currentTime + 0.25);
+        }
+        function playMoveSound() {
+            if (!musicEnabled) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = 600; gain.gain.value = 0.08;
+            osc.start(); gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.2);
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        // ============================================================
+        // 4. ПЕРСОНАЖИ И ИНТЕРФЕЙС (упрощённый выбор)
+        // ============================================================
+        const allCharacters = [
+            {id:'roma',name:'Рома',image:'images/roma.png'},
+            {id:'tanya',name:'Таня',image:'images/tanya.png'},
+            {id:'tyoma',name:'Тёма',image:'images/tyoma.png'},
+            {id:'dyoma',name:'Дёма',image:'images/dyoma.png'},
+            {id:'kostya',name:'Костя',image:'images/kostya.png'},
+            {id:'katya',name:'Катя',image:'images/katya.png'},
+            {id:'mira',name:'Мира',image:'images/mira.png'},
+            {id:'tima',name:'Тима',image:'images/tima.png'}
+        ];
+        const difficultyLevels = [
+            { id:'easy', label:'🌱 Легко', level:'easy' },
+            { id:'medium', label:'⚡ Средне', level:'medium' },
+            { id:'hard', label:'🔥 Тяжело', level:'hard' }
+        ];
+
+        function showPreview(character, onConfirm, type) {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.innerHTML = `<div class="modal-content"><img src="${character.image}" style="width:100%;border-radius:50%"><h2>${character.name}</h2><button class="bg-green-500 text-white">Выбрать</button><button class="bg-gray-500 text-white">Отмена</button></div>`;
+            document.body.appendChild(modal);
+            modal.querySelector('.bg-green-500').onclick = () => {
+                onConfirm();
+                modal.remove();
+                if (type === 'hero') {
+                    showTanyaMessage(`Отлично! Ты выбрал ${character.name}! Теперь выбери соперника.`);
+                } else if (type === 'opponent') {
+                    showTanyaMessage(`Хороший выбор! Теперь выбери сложность игры.`);
+                }
+            };
+            modal.querySelector('.bg-gray-500').onclick = () => modal.remove();
+        }
+
+        function buildHeroGrid() {
+            const grid = document.getElementById('hero-grid');
+            grid.innerHTML = '';
+            allCharacters.forEach(c => {
+                const card = document.createElement('div');
+                card.className = 'character-card';
+                card.innerHTML = `<div class="character-img"><img src="${c.image}"></div><div class="font-bold text-white">${c.name}</div>`;
+                card.onclick = () => showPreview(c, () => {
+                    currentHero = c;
+                    document.getElementById('hero-screen').classList.add('hidden-screen');
+                    document.getElementById('opponent-screen').classList.remove('hidden-screen');
+                    buildOpponentGrid();
+                }, 'hero');
+                grid.appendChild(card);
+            });
+        }
+
+        function buildOpponentGrid() {
+            const grid = document.getElementById('opponent-grid');
+            grid.innerHTML = '';
+            const opps = allCharacters.filter(c => c.id !== currentHero.id);
+            opps.forEach(opp => {
+                const card = document.createElement('div');
+                card.className = 'character-card';
+                card.innerHTML = `<div class="character-img"><img src="${opp.image}"></div><div class="font-bold text-white">${opp.name}</div>`;
+                card.onclick = () => showPreview(opp, () => {
+                    currentOpponent = opp;
+                    const selected = document.querySelector('.difficulty-radio .selected-easy, .difficulty-radio .selected-medium, .difficulty-radio .selected-hard');
+                    if (selected) {
+                        const level = selected.dataset.level;
+                        currentDifficulty = difficultyLevels.find(d => d.level === level);
+                        startGame();
+                    } else {
+                        showTanyaMessage('Выбери сложность!');
+                    }
+                }, 'opponent');
+                grid.appendChild(card);
+            });
+            document.querySelectorAll('.difficulty-radio button').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    document.querySelectorAll('.difficulty-radio button').forEach(b => {
+                        b.classList.remove('selected-easy', 'selected-medium', 'selected-hard');
+                    });
+                    const level = this.dataset.level;
+                    if (level === 'easy') this.classList.add('selected-easy');
+                    else if (level === 'medium') this.classList.add('selected-medium');
+                    else if (level === 'hard') this.classList.add('selected-hard');
+                    if (currentOpponent) {
+                        currentDifficulty = difficultyLevels.find(d => d.level === level);
+                        startGame();
+                    } else {
+                        showTanyaMessage('Сначала выбери соперника!');
+                    }
+                };
+            });
+        }
+
+        function startGame() {
+            document.getElementById('hero-screen').classList.add('hidden-screen');
+            document.getElementById('opponent-screen').classList.add('hidden-screen');
+            document.getElementById('game-screen').classList.remove('hidden-screen');
+            document.getElementById('hero-big-avatar').innerHTML = `<img src="${currentHero.image}">`;
+            document.getElementById('hero-big-name').innerText = currentHero.name;
+            document.getElementById('opponent-big-avatar').innerHTML = `<img src="${currentOpponent.image}">`;
+            document.getElementById('opponent-big-name').innerText = currentOpponent.name;
+            resetGame();
+            showTanyaMessage(`Игра началась! Ты играешь за ${currentHero.name}. Твой ход!`);
+        }
+
+        function resetToHeroSelection() {
+            document.getElementById('game-screen').classList.add('hidden-screen');
+            document.getElementById('hero-screen').classList.remove('hidden-screen');
+            document.getElementById('opponent-screen').classList.add('hidden-screen');
+            currentHero = null; currentOpponent = null; currentDifficulty = null;
+            moveHistory = [];
+            moveHistoryFEN = [];
+            resetGame();
+            showTanyaMessage('Возврат к выбору игрока! Выбери снова!');
+        }
+
+        function showMainMenu() {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.innerHTML = `<div class="modal-content">
+                <h2>⭐ Меню</h2>
+                <button onclick="resetGame(); this.closest('.modal').remove();">🔄 Новая игра</button>
+                <button onclick="giveHint(); this.closest('.modal').remove();">💡 Подсказка</button>
+                <button onclick="undoMove(); this.closest('.modal').remove();">↩️ Отменить ход</button>
+                <button onclick="alert('Король: 1 клетка.\nФерзь: по горизонтали/вертикали/диагонали.\nЛадья: горизонталь/вертикаль.\nСлон: диагональ.\nКонь: буквой Г.\nПешка: вперёд, бьёт диагональ.'); this.closest('.modal').remove();">📚 Обучение</button>
+                <button onclick="showProfile(); this.closest('.modal').remove();">👤 Профиль</button>
+                <button onclick="resetToHeroSelection(); this.closest('.modal').remove();">🚪 Выйти в главное меню</button>
+                <button onclick="this.closest('.modal').remove();">❌ Закрыть</button>
+            </div>`;
+            document.body.appendChild(modal);
+        }
+
+        // ---------- Таня ----------
+        const tanyaDiv = document.getElementById('tanya'), tanyaSpeech = document.getElementById('tanya-speech');
+        const tanyaMessages = ['Привет!', 'Хороший ход!', 'Не спеши', 'Я с тобой!', 'Вперёд к победе!', 'Осторожно, король!', 'Ты молодец!'];
+        let tanyaTimeout = null;
+
+        function showTanyaMessage(message) {
+            if (tanyaTimeout) clearTimeout(tanyaTimeout);
+            tanyaSpeech.innerText = message;
+            tanyaSpeech.classList.remove('hidden');
+            tanyaSpeech.classList.add('show');
+            document.getElementById('tanya-avatar').classList.add('tanya-speak');
+            setTimeout(() => { document.getElementById('tanya-avatar').classList.remove('tanya-speak'); }, 500);
+            const heart = document.createElement('div');
+            heart.className = 'floating-heart';
+            heart.innerText = '❤️';
+            const rect = tanyaDiv.getBoundingClientRect();
+            heart.style.left = rect.left + rect.width/2 - 15 + 'px';
+            heart.style.top = rect.top - 20 + 'px';
+            document.body.appendChild(heart);
+            setTimeout(() => heart.remove(), 1000);
+            tanyaTimeout = setTimeout(() => {
+                tanyaSpeech.classList.remove('show');
+                tanyaSpeech.classList.add('hidden');
+                tanyaTimeout = null;
+            }, 3800);
+        }
+        tanyaDiv.onclick = () => { const msg = tanyaMessages[Math.floor(Math.random()*tanyaMessages.length)]; showTanyaMessage(msg); };
+
+        // ============================================================
+        // 5. ИНИЦИАЛИЗАЦИЯ
+        // ============================================================
+        document.getElementById('menu-btn').onclick = showMainMenu;
+        document.getElementById('hint-btn').onclick = giveHint;
+        document.getElementById('reset-btn').onclick = resetGame;
+        document.getElementById('undo-btn').onclick = undoMove;
+        document.getElementById('change-hero-btn').onclick = resetToHeroSelection;
+        document.getElementById('change-opponent-btn').onclick = () => {
+            document.getElementById('game-screen').classList.add('hidden-screen');
+            document.getElementById('opponent-screen').classList.remove('hidden-screen');
+            currentOpponent = null;
+            document.querySelectorAll('.difficulty-radio button').forEach(b => b.classList.remove('selected-easy', 'selected-medium', 'selected-hard'));
+            buildOpponentGrid();
+            showTanyaMessage('Выбери нового соперника!');
+        };
+
+        loadProfile();
+        buildHeroGrid();
+        document.getElementById('splash-screen').style.display = 'flex';
+        document.getElementById('hero-screen').classList.add('hidden-screen');
+        document.getElementById('opponent-screen').classList.add('hidden-screen');
+        document.getElementById('game-screen').classList.add('hidden-screen');
+        setTimeout(() => {
+            const mediumBtn = document.querySelector('.difficulty-radio button[data-level="medium"]');
+            if (mediumBtn) mediumBtn.classList.add('selected-medium');
+        }, 100);
+    </script>
+</body>
+</html>
